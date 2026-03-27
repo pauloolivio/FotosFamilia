@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Mosaico Adaptativo | Carregamento Manual</title>
+<title>Mosaico Automático | GitHub Gallery</title>
 
 <style>
 * {
@@ -51,12 +51,10 @@ body {
   background: #000;
 }
 
-/* Modo Paisagem (padrão) - 6 colunas */
 .proportional-grid.landscape-layout {
   grid-template-columns: repeat(6, 1fr);
 }
 
-/* Modo Retrato - 3 colunas (layout mais adequado para vertical) */
 .proportional-grid.portrait-layout {
   grid-template-columns: repeat(3, 1fr);
 }
@@ -112,7 +110,6 @@ body {
   padding: 0;
 }
 
-/* Fallback para imagens que não carregam */
 .media-container img.img-error {
   object-fit: contain;
   opacity: 0.7;
@@ -168,6 +165,7 @@ body {
 
 .fullscreen-message .icon { font-size: 72px; opacity: 0.7; }
 .fullscreen-message p { font-size: 1rem; max-width: 420px; line-height: 1.6; font-weight: 400; }
+.fullscreen-message small { font-size: 0.8rem; opacity: 0.7; }
 
 .btn-inline {
   background: rgba(80, 110, 150, 0.9);
@@ -204,7 +202,7 @@ body {
 }
 .floating-timer span { font-size: 1.2rem; font-weight: 800; color: #ffcc66; }
 
-.floating-folder-btn {
+.floating-refresh-btn {
   position: fixed;
   bottom: 20px;
   left: 20px;
@@ -222,9 +220,8 @@ body {
   transition: all 0.2s;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
 }
-.floating-folder-btn:hover { background: rgba(60, 85, 120, 0.95); transform: scale(1.02); }
+.floating-refresh-btn:hover { background: rgba(60, 85, 120, 0.95); transform: scale(1.02); }
 
-/* Botão de Tela Cheia para TV */
 .fullscreen-tv-btn {
   position: fixed;
   bottom: 20px;
@@ -252,7 +249,6 @@ body {
   transform: translateX(-50%) scale(1.05);
 }
 
-/* Indicador de orientação atual */
 .orientation-badge {
   position: fixed;
   top: 20px;
@@ -270,7 +266,6 @@ body {
   border: 1px solid rgba(255, 200, 100, 0.3);
 }
 
-/* Mensagem de instrução do modo TV */
 .tv-mode-instruction {
   position: fixed;
   top: 20px;
@@ -390,7 +385,7 @@ body {
 
 @media (max-width: 768px) {
   .floating-timer { bottom: 12px; right: 12px; padding: 4px 12px; font-size: 0.75rem; }
-  .floating-folder-btn { bottom: 12px; left: 12px; padding: 6px 14px; font-size: 0.7rem; }
+  .floating-refresh-btn { bottom: 12px; left: 12px; padding: 6px 14px; font-size: 0.7rem; }
   .fullscreen-tv-btn { bottom: 12px; padding: 6px 16px; font-size: 0.75rem; }
   .orientation-badge { top: 12px; right: 12px; padding: 4px 12px; font-size: 0.7rem; }
   .tv-mode-instruction { font-size: 0.7rem; top: 12px; white-space: nowrap; }
@@ -401,13 +396,11 @@ body {
 <body>
 <div class="app-fullscreen" id="appFullscreen">
   <div class="mosaic-area" id="mosaicArea">
-    <div class="fullscreen-message" id="initialMessage">
+    <div class="fullscreen-message" id="loadingMessage">
       <div class="icon">📂🖼️</div>
-      <p>
-        <strong>Selecione uma pasta com fotos e vídeos</strong><br>
-        Clique no botão abaixo para escolher a pasta
-      </p>
-      <button class="btn-inline" id="initialSelectBtn">📁 Selecionar Pasta</button>
+      <p><strong>Carregando galeria do GitHub...</strong><br>Escaneando pasta de imagens</p>
+      <div class="loading-spinner"></div>
+      <small>📁 Procurando arquivos na pasta "imagens/"</small>
     </div>
   </div>
   <div class="viewer-overlay" id="viewerOverlay" aria-hidden="true">
@@ -419,24 +412,31 @@ body {
   </div>
 </div>
 <div class="floating-timer" id="floatingTimer">🔄 <span id="timerSeconds">20</span>s</div>
-<button class="floating-folder-btn" id="floatingFolderBtn">📁 Escolher Pasta</button>
+<button class="floating-refresh-btn" id="refreshBtn">🔄 Recarregar Galeria</button>
 <button class="fullscreen-tv-btn" id="fullscreenTvBtn">📺 TV FULL | Tela Cheia</button>
 <div class="orientation-badge" id="orientationBadge">🖥️ Modo: Paisagem (6 colunas)</div>
 
 <script>
 // ======================= CONFIGURAÇÕES =======================
+// 🔧 CONFIGURE AQUI O CAMINHO DA SUA PASTA NO GITHUB
+const GITHUB_USERNAME = "pauloolivio";      // Substitua pelo seu usuário do GitHub
+const GITHUB_REPO = "FotosFamilia";       // Substitua pelo nome do repositório
+const BRANCH = "main";                       // ou "master"
+const IMAGES_FOLDER = "imagens";             // Nome da pasta com as imagens
+
+// URL da API do GitHub para listar arquivos
+const API_URL = `https://api.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/contents/${IMAGES_FOLDER}?ref=${BRANCH}`;
+
 let allMediaItems = [];       
 let imageItems = [];          
 let currentVideoItem = null;  
 let timerInterval = null;
 let secondsLeft = 20;
 let isCycleActive = true;
-let urlCache = new Map();
-let isTvMode = false;
 let currentOrientation = 'landscape';
 
 // Extensões suportadas
-const IMG_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif', 'avif', 'heic', 'heif'];
+const IMG_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif', 'avif', 'svg'];
 const VID_EXTS = ['mp4', 'webm', 'mov', 'mkv', 'm4v', 'avi'];
 
 function getFileExt(filename) { 
@@ -451,11 +451,9 @@ function isVideo(filename) {
   return VID_EXTS.includes(getFileExt(filename)); 
 }
 
-// ======================= DETECTAR ORIENTAÇÃO DA TELA =======================
+// ======================= DETECTAR ORIENTAÇÃO =======================
 function detectOrientation() {
-  const width = window.innerWidth;
-  const height = window.innerHeight;
-  return width > height ? 'landscape' : 'portrait';
+  return window.innerWidth > window.innerHeight ? 'landscape' : 'portrait';
 }
 
 function updateOrientationBadge() {
@@ -493,13 +491,12 @@ const PORTRAIT_FIRST_ROW = ['portrait', 'landscape', 'portrait'];
 // DOM elements
 const mosaicArea = document.getElementById('mosaicArea');
 const timerSpan = document.getElementById('timerSeconds');
-const floatingFolderBtn = document.getElementById('floatingFolderBtn');
-const initialSelectBtn = document.getElementById('initialSelectBtn');
 const viewerOverlay = document.getElementById('viewerOverlay');
 const viewerCloseBtn = document.getElementById('viewerCloseBtn');
 const viewerMedia = document.getElementById('viewerMedia');
 const viewerMeta = document.getElementById('viewerMeta');
 const fullscreenTvBtn = document.getElementById('fullscreenTvBtn');
+const refreshBtn = document.getElementById('refreshBtn');
 
 // ======================= FUNÇÕES DE TELA CHEIA =======================
 function enterFullscreen(element) {
@@ -519,6 +516,7 @@ function isFullscreenActive() {
   return !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
 }
 
+let isTvMode = false;
 function toggleTvMode() {
   if (!isFullscreenActive()) {
     enterFullscreen(document.getElementById('appFullscreen'));
@@ -534,17 +532,15 @@ function toggleTvMode() {
 }
 
 function hideControlButtons(hide) {
-  const folderBtn = document.getElementById('floatingFolderBtn');
   const timer = document.getElementById('floatingTimer');
   const tvBtn = document.getElementById('fullscreenTvBtn');
+  const refresh = document.getElementById('refreshBtn');
   const badge = document.getElementById('orientationBadge');
-  
   const opacity = hide ? '0' : '1';
   const pointerEvents = hide ? 'none' : 'auto';
-  
-  if (folderBtn) { folderBtn.style.opacity = opacity; folderBtn.style.pointerEvents = pointerEvents; }
   if (timer) { timer.style.opacity = opacity; timer.style.pointerEvents = pointerEvents; }
   if (tvBtn) { tvBtn.style.opacity = opacity; tvBtn.style.pointerEvents = pointerEvents; }
+  if (refresh) { refresh.style.opacity = opacity; refresh.style.pointerEvents = pointerEvents; }
   if (badge) { badge.style.opacity = opacity; badge.style.pointerEvents = pointerEvents; }
 }
 
@@ -568,10 +564,7 @@ function hideTvInstruction() {
 function handleScreenClickForTvMode(e) {
   if (isTvMode && isFullscreenActive()) {
     const target = e.target;
-    if (target.id === 'fullscreenTvBtn' || target.id === 'floatingFolderBtn' || 
-        target.closest('#fullscreenTvBtn') || target.closest('#floatingFolderBtn')) {
-      return;
-    }
+    if (target.id === 'fullscreenTvBtn' || target.closest('#fullscreenTvBtn')) return;
     exitFullscreen();
     isTvMode = false;
     hideControlButtons(false);
@@ -589,41 +582,105 @@ function handleFullscreenChange() {
 
 document.addEventListener('fullscreenchange', handleFullscreenChange);
 document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-document.addEventListener('msfullscreenchange', handleFullscreenChange);
 document.addEventListener('click', handleScreenClickForTvMode);
 
-// ======================= CARREGAMENTO DE IMAGENS =======================
-function loadImageWithOrientation(file) {
-  return new Promise((resolve) => {
-    const cacheKey = file.name + file.size + file.lastModified;
-    if (urlCache.has(cacheKey)) {
-      const cached = urlCache.get(cacheKey);
-      resolve({ type: 'image', url: cached.url, name: file.name, orientation: cached.orientation, file: file });
-      return;
+// ======================= LISTAR ARQUIVOS DO GITHUB =======================
+async function listFilesFromGitHub() {
+  try {
+    const response = await fetch(API_URL);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const files = await response.json();
+    
+    // Filtra apenas arquivos (não pastas)
+    const mediaFiles = files.filter(file => file.type === 'file');
+    
+    const rawUrls = [];
+    for (const file of mediaFiles) {
+      const filename = file.name;
+      if (isImage(filename) || isVideo(filename)) {
+        // Constrói URL raw do GitHub
+        const rawUrl = `https://raw.githubusercontent.com/${GITHUB_USERNAME}/${GITHUB_REPO}/${BRANCH}/${IMAGES_FOLDER}/${filename}`;
+        rawUrls.push({ url: rawUrl, name: filename, type: isImage(filename) ? 'image' : 'video' });
+      }
     }
     
-    const url = URL.createObjectURL(file);
+    return rawUrls;
+  } catch (error) {
+    console.error('Erro ao listar arquivos:', error);
+    return [];
+  }
+}
+
+// ======================= CARREGAR MÍDIAS =======================
+function loadImageFromUrl(url, filename) {
+  return new Promise((resolve) => {
     const img = new Image();
-    
     const timeoutId = setTimeout(() => {
-      resolve({ type: 'image', url: url, name: file.name, orientation: 'landscape', file: file, loadError: true });
+      resolve({ type: 'image', url: url, name: filename, orientation: 'landscape', loadError: true });
     }, 8000);
     
     img.onload = () => {
       clearTimeout(timeoutId);
       const w = img.naturalWidth, h = img.naturalHeight;
       const orientation = (h > w) ? 'portrait' : 'landscape';
-      urlCache.set(cacheKey, { url: url, orientation: orientation, width: w, height: h });
-      resolve({ type: 'image', url: url, name: file.name, orientation: orientation, file: file });
+      resolve({ type: 'image', url: url, name: filename, orientation: orientation });
     };
     
     img.onerror = () => {
       clearTimeout(timeoutId);
-      resolve({ type: 'image', url: URL.createObjectURL(file), name: file.name, orientation: 'landscape', file: file, loadError: true });
+      console.warn(`Erro ao carregar: ${filename}`);
+      resolve({ type: 'image', url: url, name: filename, orientation: 'landscape', loadError: true });
     };
     
     img.src = url;
   });
+}
+
+function loadVideoFromUrl(url, filename) {
+  return new Promise((resolve) => {
+    resolve({ type: 'video', url: url, name: filename, orientation: 'landscape' });
+  });
+}
+
+async function loadAllMedia() {
+  const loadingMsg = document.getElementById('loadingMessage');
+  if (loadingMsg) {
+    loadingMsg.innerHTML = `<div class="icon">📡</div><p><strong>Conectando ao GitHub...</strong><br>Listando arquivos da pasta "${IMAGES_FOLDER}/"</p><div class="loading-spinner"></div><small>🔗 ${GITHUB_USERNAME}/${GITHUB_REPO}</small>`;
+  }
+  
+  const fileList = await listFilesFromGitHub();
+  
+  if (fileList.length === 0) {
+    showErrorMessage(`Nenhum arquivo encontrado na pasta "${IMAGES_FOLDER}/". Verifique se a pasta existe e tem imagens/vídeos.`);
+    return false;
+  }
+  
+  if (loadingMsg) {
+    loadingMsg.innerHTML = `<div class="icon">⏳</div><p><strong>Carregando ${fileList.length} arquivos...</strong><br>Processando imagens e vídeos</p><div class="loading-spinner"></div>`;
+  }
+  
+  const loadPromises = [];
+  for (const file of fileList) {
+    if (file.type === 'image') {
+      loadPromises.push(loadImageFromUrl(file.url, file.name));
+    } else if (file.type === 'video') {
+      loadPromises.push(loadVideoFromUrl(file.url, file.name));
+    }
+  }
+  
+  const results = await Promise.all(loadPromises);
+  allMediaItems = results.filter(item => item && !item.loadError);
+  imageItems = allMediaItems.filter(m => m.type === 'image');
+  currentVideoItem = allMediaItems.find(m => m.type === 'video') || null;
+  
+  if (imageItems.length === 0) {
+    showErrorMessage("Nenhuma imagem válida encontrada. Verifique os formatos suportados.");
+    return false;
+  }
+  
+  return true;
 }
 
 // ======================= VISUALIZADOR =======================
@@ -697,9 +754,7 @@ function ensurePortraitInColumns(columnsData, columnsThatNeedPortrait) {
 // ======================= RENDERIZAÇÃO DO MOSAICO =======================
 function renderMosaic() {
   if (!mosaicArea) return;
-  if (allMediaItems.length === 0 || imageItems.length === 0) {
-    return;
-  }
+  if (allMediaItems.length === 0 || imageItems.length === 0) return;
   
   const newOrientation = detectOrientation();
   if (newOrientation !== currentOrientation) {
@@ -855,10 +910,6 @@ function renderMosaic() {
           img.style.objectFit = 'contain';
           img.style.opacity = '0.8';
           img.classList.add('img-error');
-          if (media.url && !media.reloaded) {
-            media.reloaded = true;
-            setTimeout(() => { img.src = media.url + '?t=' + Date.now(); }, 100);
-          }
         };
         
         if (media.orientation === 'portrait') {
@@ -870,7 +921,6 @@ function renderMosaic() {
         }
         
         container.appendChild(img);
-        
         cell.addEventListener('click', (e) => { e.stopPropagation(); openViewer(media); });
       } 
       else if (media && media.type === 'video' && media.url) {
@@ -920,57 +970,22 @@ function renderMosaic() {
   mosaicArea.appendChild(gridContainer);
 }
 
-// ======================= PROCESSAR PASTA =======================
-async function processRootFolder(files) {
-  const fileArray = Array.from(files);
-  const imagePromises = [];
-  const tempVideos = [];
+function showErrorMessage(msg) {
+  const errorDiv = document.createElement('div');
+  errorDiv.className = 'fullscreen-message';
+  errorDiv.innerHTML = `
+    <div class="icon">⚠️</div>
+    <p><strong>Erro ao carregar galeria</strong></p>
+    <p>${msg}</p>
+    <button class="btn-inline" id="retryBtn">🔄 Tentar Novamente</button>
+    <small style="margin-top: 20px;">Configure as variáveis GITHUB_USERNAME, GITHUB_REPO e IMAGES_FOLDER no código</small>
+  `;
+  const existing = mosaicArea.querySelector('.proportional-grid, .fullscreen-message');
+  if (existing) existing.remove();
+  mosaicArea.appendChild(errorDiv);
   
-  const loadingMsg = document.createElement('div');
-  loadingMsg.className = 'fullscreen-message';
-  loadingMsg.innerHTML = `<div class="icon">⏳</div><p>Carregando ${fileArray.length} arquivos...</p><div class="loading-spinner"></div>`;
-  const oldContent = mosaicArea.querySelector('.proportional-grid, .fullscreen-message');
-  if (oldContent) oldContent.remove();
-  mosaicArea.appendChild(loadingMsg);
-  
-  for (const file of fileArray) {
-    if (isImage(file.name)) imagePromises.push(loadImageWithOrientation(file));
-    else if (isVideo(file.name)) tempVideos.push({ type: 'video', url: URL.createObjectURL(file), name: file.name, file, orientation: 'landscape' });
-  }
-  
-  const resolvedImages = await Promise.all(imagePromises);
-  const validImages = resolvedImages.filter(img => img && img.url);
-  
-  if (allMediaItems.length > 0) {
-    setTimeout(() => {
-      for (let item of allMediaItems) {
-        if (item.url && item.type === 'image') {
-          let stillInUse = validImages.some(newItem => newItem.url === item.url);
-          if (!stillInUse) URL.revokeObjectURL(item.url);
-        }
-      }
-    }, 5000);
-  }
-  
-  let selectedVideo = null;
-  for (const video of tempVideos) {
-    if (!selectedVideo) selectedVideo = video;
-    else URL.revokeObjectURL(video.url);
-  }
-  
-  allMediaItems = [...validImages];
-  if (selectedVideo) allMediaItems.push(selectedVideo);
-  imageItems = allMediaItems.filter(m => m.type === 'image');
-  currentVideoItem = allMediaItems.find(m => m.type === 'video') || null;
-  
-  if (imageItems.length === 0) {
-    showFullscreenMessage("Nenhuma imagem válida encontrada na pasta.");
-    stopTimer();
-    return false;
-  }
-  
-  resetAndRender();
-  return true;
+  const retryBtn = document.getElementById('retryBtn');
+  if (retryBtn) retryBtn.addEventListener('click', () => init());
 }
 
 // ======================= TIMER =======================
@@ -998,45 +1013,22 @@ function resetAndRender() {
   updateTimerDisplay();
   isCycleActive = true;
   if (imageItems.length > 0) { renderMosaic(); startRotationTimer(); }
-  else showFullscreenMessage("Carregue uma pasta com imagens para iniciar.");
 }
 
-function showFullscreenMessage(msg) {
-  const messageDiv = document.createElement('div');
-  messageDiv.className = 'fullscreen-message';
-  messageDiv.innerHTML = `<div class="icon">📂</div><p>${msg}</p><button class="btn-inline" id="dynamicSelectBtn">📂 Selecionar Pasta</button>`;
-  const existing = mosaicArea.querySelector('.proportional-grid, .fullscreen-message');
-  if (existing) existing.remove();
-  mosaicArea.appendChild(messageDiv);
-  const dynamicBtn = document.getElementById('dynamicSelectBtn');
-  if (dynamicBtn) dynamicBtn.addEventListener('click', () => openFolderPicker());
+// ======================= INICIALIZAÇÃO =======================
+async function init() {
+  const success = await loadAllMedia();
+  if (success) {
+    resetAndRender();
+  }
 }
 
-let folderInput = null;
-function openFolderPicker() {
-  if (folderInput) { folderInput.remove(); folderInput = null; }
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.setAttribute('webkitdirectory', '');
-  input.setAttribute('directory', '');
-  input.setAttribute('multiple', '');
-  input.style.display = 'none';
-  document.body.appendChild(input);
-  folderInput = input;
-  input.addEventListener('change', async (event) => {
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
-    await processRootFolder(files);
-    if (folderInput) { folderInput.remove(); folderInput = null; }
-  });
-  input.click();
-}
+refreshBtn.addEventListener('click', async () => {
+  stopTimer();
+  await init();
+});
 
-// Inicialização: Mostrar mensagem para o usuário selecionar a pasta manualmente
-// Não carrega nada automaticamente
-
-floatingFolderBtn.addEventListener('click', () => openFolderPicker());
-if (initialSelectBtn) initialSelectBtn.addEventListener('click', () => openFolderPicker());
+init();
 
 document.body.style.overflow = 'hidden';
 document.documentElement.style.overflow = 'hidden';
