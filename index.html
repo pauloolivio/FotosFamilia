@@ -994,7 +994,7 @@ function startRotationTimer() {
   timerInterval = setInterval(() => {
     if (!isCycleActive) return;
     if (secondsLeft <= 1) {
-      secondsLeft = 20;
+      secondsLeft = 40;
       updateTimerDisplay();
       if (allMediaItems.length > 0 && imageItems.length > 0) renderMosaic();
     } else {
@@ -1009,7 +1009,7 @@ function updateTimerDisplay() { if (timerSpan) timerSpan.innerText = secondsLeft
 
 function resetAndRender() {
   stopTimer();
-  secondsLeft = 20;
+  secondsLeft = 40;
   updateTimerDisplay();
   isCycleActive = true;
   if (imageItems.length > 0) { renderMosaic(); startRotationTimer(); }
